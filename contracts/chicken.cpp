@@ -515,7 +515,7 @@ void chicken::finish()
   }
 
 // generate .wasm and .wast file
-//EOSIO_ABI_PRO(chicken, (transfer)(withdraw)(finish)(start))
+EOSIO_ABI_PRO(chicken, (transfer)(withdraw)(finish)(start))
 
 // generate .abi file
-EOSIO_ABI(chicken, (transfer)(withdraw)(finish)(start))
+//EOSIO_ABI(chicken, (transfer)(withdraw)(finish)(start))
