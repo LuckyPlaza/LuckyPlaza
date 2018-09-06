@@ -258,17 +258,6 @@ void slot_machine::flowtobancor() {
     .send();
 }
 
-void slot_machine::erase()
-{
-    require_auth(_self);
-    global.erase(global.find(0));
-
-    for (; queues.begin() != queues.end() ;) {
-      queues.erase(queues.begin());
-    }
-
-}
-
 #undef EOSIO_ABI
 #define EOSIO_ABI(TYPE, MEMBERS)                                                                                                              \
   extern "C" {                                                                                                                                    \
@@ -291,4 +280,4 @@ void slot_machine::erase()
 }
 
 // generate .wasm and .wast file
-EOSIO_ABI(slot_machine, (transfer)(init)(reveal)(result)(update)(flowtobancor)(erase))
+EOSIO_ABI(slot_machine, (transfer)(init)(reveal)(result)(update)(flowtobancor))
