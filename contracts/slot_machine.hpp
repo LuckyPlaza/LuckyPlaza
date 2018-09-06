@@ -31,7 +31,6 @@ public:
 
     void flowtobancor();
 
-    void erase();
 
 private:
     const uint64_t tps[4] = { 126, 60, 24, 6 };
