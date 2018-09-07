@@ -233,6 +233,7 @@ void slot_machine::result( std::string result, account_name account, asset win_a
 }
 
 void slot_machine::update(uint64_t status, uint64_t lkt_bonus_rate) {
+	require_auth(_self);
     auto itr = global.find(0);
     global.modify(itr, 0, [&](auto& g) {
         g.status = status;
