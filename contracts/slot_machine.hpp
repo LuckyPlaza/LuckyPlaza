@@ -34,7 +34,7 @@ public:
 
 private:
     const uint64_t tps[4] = { 126, 60, 24, 6 };
-    const double pl[4] = { 1.63, 3.5, 8.8, 35.0 };
+    const double pl[4] = { 1.6, 3.2, 8.5, 32.0 };
     // @abi table global i64
     struct global {
         uint64_t id = 0;
