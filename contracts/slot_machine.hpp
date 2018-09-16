@@ -10,64 +10,48 @@ using namespace std;
 #define EOS_SYMBOL S(4, EOS)
 #define TOKEN_CONTRACT N(eosio.token)
 
-class slot_machine : public contract {
 
+class slot_machine : public contract { 
 public:
-  	slot_machine(account_name self)
-		: contract(self),
+        slot_machine(account_name self)
+                : contract(self),
         queues(_self, _self),
+        bets(_self, _self),
+                hashlist(_self, _self),
         global(_self, _self) {
-  	}
+        }
 
-    void init(const checksum256& hash);
+    void init();
+
+    void addhash(checksum256 hash);
 
     void transfer(account_name from, account_name to, asset quantity, std::string memo);
 
-    void reveal(checksum256& seed, checksum256& hash);
+        void reveal(checksum256& seed, checksum256& hash);
 
-    void result( std::string result, account_name account, asset win_amount,  uint64_t bet_type,  checksum256 player_seed );
-
-    void update(uint64_t status, uint64_t lkt_bonus_rate);
+        void update(uint64_t status, uint64_t lkt_bonus_rate, asset safe_balance);
 
     void flowtobancor();
-
 
 private:
     const uint64_t tps[4] = { 126, 60, 24, 6 };
     const double pl[4] = { 1.6, 3.2, 8.5, 32.0 };
+    const string PUB_KEY = "EOS7vM8potbuXDwBAmErSj3Az2cQ1AHBTX1B8U25LM9hHE3tzPCeZ";
+
     // @abi table global i64
     struct global {
         uint64_t id = 0;
-        checksum256 hash;
+        asset safe_balance;
+        uint64_t current_id;
         uint64_t status;
         uint64_t lkt_bonus_rate;
         uint64_t queue_size;
-        struct trade_info {
-            account_name player;
-            asset payout;
-            asset bet;
-            uint64_t type;
-            uint64_t time;
-            EOSLIB_SERIALIZE(trade_info, (player)(payout)(bet)(type)(time) )
-        };
-        uint64_t trade_pos = 0;
-        std::vector<trade_info> trades;
-
-        void add_trade(trade_info trade) {
-            if (trades.size() < 30) {
-                trades.push_back(trade);
-                trade_pos = (trade_pos + 1) % 30;
-                return;
-            }
-            trades[trade_pos] = trade;
-            trade_pos = (trade_pos + 1) % 30;
-        }
-
         uint64_t primary_key() const { return id; }
-        EOSLIB_SERIALIZE(global, (id)(hash)(status)(lkt_bonus_rate)(queue_size)(trade_pos)(trades))
+        EOSLIB_SERIALIZE(global, (id)(safe_balance)(current_id)(status)(lkt_bonus_rate)(queue_size))
     };
     typedef eosio::multi_index<N(global), global> global_index;
     global_index global;  
+
 
     // @abi table queue i64
     struct queueitem {
@@ -94,6 +78,27 @@ private:
     };
     typedef eosio::multi_index<N(player), player> player_index;
 
+    // @abi table bet i64
+    struct betitem {
+        account_name account;
+        uint64_t bet_type;
+        checksum256 seed;
+        asset bet_amount;
+        uint64_t primary_key() const { return account; }
+        EOSLIB_SERIALIZE(betitem, (account)(bet_type)(seed)(bet_amount))
+    };
+    typedef eosio::multi_index<N(bet), betitem> bet_index;
+    bet_index bets;
+
+    // @abi table househash i64
+    struct househash {
+        uint64_t id;
+        checksum256 hash;
+        uint64_t primary_key() const { return id; }
+        EOSLIB_SERIALIZE(househash, (id)(hash))
+    };
+    typedef eosio::multi_index<N(househash), househash> househash_index;
+    househash_index hashlist;
 
     struct token
     {
@@ -124,9 +129,9 @@ private:
 
     void bet(account_name account, uint64_t type, asset amount, const checksum256& seed );
 
-    void rock(const queueitem& item, const checksum256& seed);
+    void rock(const betitem& item, const checksum256& reveal_seed);
 
-    uint64_t get_bonus(uint64_t seed, uint64_t amount, uint64_t bet_type);
+    void get_bonus(uint64_t seed, uint64_t amount, uint64_t bet_type, uint64_t& bonus, uint64_t& reveal_type, uint64_t& reveal_pos );
 
     uint8_t char2int(char input);
 
