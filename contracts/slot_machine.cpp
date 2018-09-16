@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <eosiolib/transaction.hpp>
 
 #include "slot_machine.hpp"
 
@@ -9,25 +10,31 @@
 #define TOKEN_CONTRACT N(eosio.token)
 #define LKT_CONTRACT N(chyyshayysha)
 #define BANCOR_CONTRACT N(bkyyshayysha)
+#define LOG_CONTRACT N(luckyslotlog)
 
-void slot_machine::init(const checksum256& hash) {
+void slot_machine::init() {
     require_auth(_self);
-    auto g = global.find(0);
+    auto g = global.begin();
     if (g == global.end()) {
       global.emplace(_self, [&](auto& g){
         g.id = 0;
-        g.hash = hash;
-        g.trade_pos = 0;
+        g.current_id = 0;
         g.queue_size = 0;
         g.status = 0;
+        g.safe_balance = asset(70000000, EOS_SYMBOL);
         g.lkt_bonus_rate = 0;
-      });
-    } else {
-      global.modify(g, 0, [&](auto& g) {
-        g.hash = hash;
       });
     }
   }
+
+void slot_machine::addhash(checksum256 hash) {
+    require_auth(_self);
+    hashlist.emplace(_self, [&](auto& g){
+        g.hash = hash;
+        g.id = hashlist.available_primary_key();
+    });
+
+}
 
 uint64_t slot_machine::merge_seed(const checksum256& s1, const checksum256& s2) {
   uint64_t hash = 0, x;
@@ -37,17 +44,18 @@ uint64_t slot_machine::merge_seed(const checksum256& s1, const checksum256& s2) 
   return hash;
 }
 
-uint64_t slot_machine::get_bonus(uint64_t seed, uint64_t amount, uint64_t bet_type) {
+void slot_machine::get_bonus(uint64_t seed, uint64_t amount, uint64_t bet_type, uint64_t& bonus, uint64_t& reveal_type, uint64_t& reveal_pos ) {
   seed %= 216;
-  uint64_t i = 0;
-  while (seed >= tps[i]) {
-      seed -= tps[i];
-      ++i;
+  reveal_pos = seed;
+  reveal_type = 0;
+  while (seed >= tps[reveal_type]) {
+      seed -= tps[reveal_type];
+      ++reveal_type;
   }
-  if (bet_type == i) {
-      return (uint64_t)(pl[i]*amount);
+  if (bet_type == reveal_type) {
+      bonus = (uint64_t)(pl[reveal_type]*amount);
   } else {
-      return 0;
+      bonus = 0;
   }
 }
 
@@ -83,13 +91,12 @@ void slot_machine::transfer(account_name from, account_name to, asset quantity, 
     }
 
     eosio_assert(quantity.is_valid(), "Invalid token transfer");
-    eosio_assert(quantity.amount > 0, "Quantity must be positive");
     eosio_assert(quantity.amount >= 10000, "Bet must large than 1 EOS");
 
     std::vector<std::string> inputs;
-	
+
     if (quantity.symbol == EOS_SYMBOL) {
-		split(memo, " ", inputs);
+                split(memo, " ", inputs);
 
         eosio_assert(inputs.size() == 2, "invalid input" );
         eosio_assert(inputs[1].size() == 64, "invalid checksum" );
@@ -99,6 +106,7 @@ void slot_machine::transfer(account_name from, account_name to, asset quantity, 
 
         asset pool_balance = token(TOKEN_CONTRACT).get_balance(_self, EOS_SYMBOL);
 
+                eosio_assert( global.begin()->safe_balance.amount < pool_balance.amount, "under safe, can not play");
         eosio_assert( quantity.amount < pool_balance.amount, "can not large than pool");
         eosio_assert( quantity.amount * pl[type] * 30 <  pool_balance.amount, "can not too large");
 
@@ -108,7 +116,6 @@ void slot_machine::transfer(account_name from, account_name to, asset quantity, 
         bet(from, type, quantity, seed);
     }
 }
-
 void slot_machine::bet(account_name account, uint64_t type, asset quantity, const checksum256& seed ) {
 
     require_auth(account);
@@ -116,15 +123,18 @@ void slot_machine::bet(account_name account, uint64_t type, asset quantity, cons
     eosio_assert(quantity.amount > 0, "must purchase a positive amount");
     eosio_assert(quantity.symbol == EOS_SYMBOL, "only EOS allowed" );
 
-    auto p = queues.find(account);
+    auto p = bets.find(account);
 
-    eosio_assert( p == queues.end(), "The last game have not finished yet." );
+    eosio_assert( p == bets.end(), "The last game have not finished yet." );
 
-    p = queues.emplace(_self, [&](auto& item){
+    p = bets.emplace(_self, [&](auto& item){
         item.account = account;
+        item.bet_type = type;
+        item.seed = seed;
+        item.bet_amount = quantity;
     });
 
-    auto global_itr = global.find(0);
+    auto global_itr = global.begin();
     eosio_assert(global_itr->queue_size <= 20, "too many bet in queue" );
 
     global.modify(global_itr, 0, [&](auto &g) {
@@ -133,26 +143,7 @@ void slot_machine::bet(account_name account, uint64_t type, asset quantity, cons
 
     eosio_assert(global_itr->status == 1, "slot machine not start yet." );
 
-    player_index playertable(_self, account);
-    auto player_itr = playertable.begin();
-    if (player_itr == playertable.end()) {
-        playertable.emplace(account, [&](auto& plyer) {
-            plyer.status = 1;
-            plyer.seed = seed;
-            plyer.bet_type = type;
-            plyer.bet_amount = quantity;
-        });
-    } else {
-        playertable.modify(*player_itr, 0, [&](auto& plyer) {
-            plyer.status = 1;
-            plyer.seed = seed;
-            plyer.bet_type = type;
-            plyer.bet_amount = quantity;
-        });
-    }
-
     asset lkt_balance = token(LKT_CONTRACT).get_balance(_self, LKT_SYMBOL);
-
 
     uint64_t lkt_back = quantity.amount * (global_itr->lkt_bonus_rate) / 100;
     if (lkt_back > 0 && lkt_balance.amount >= lkt_back) {
@@ -165,79 +156,72 @@ void slot_machine::bet(account_name account, uint64_t type, asset quantity, cons
 
 }
 
+// For fair, bet queue size should always small than hash queue size. 
 void slot_machine::reveal(checksum256& seed, checksum256& hash) {
 
     require_auth(_self);
 
-    assert_sha256( (char *)&seed, sizeof(seed), (const checksum256 *)& global.begin()->hash );
+    auto hashitem = hashlist.begin();
 
-    uint64_t cnt = 0;
-    for (; queues.begin() != queues.end() ;) {
-      rock(*queues.begin(), seed);
-      queues.erase(queues.begin());
-      cnt ++;
-      if (cnt == 5) break;
-    }
+    assert_sha256( (char *)&seed, sizeof(seed), (const checksum256 *)& hashitem->hash );
 
-    auto itr = global.find(0);
-    global.modify(itr, 0, [&](auto &g) {
-      g.hash = hash;
-      eosio_assert(g.queue_size >= cnt, "serious error" );
-      g.queue_size = g.queue_size - cnt;
+        rock(*bets.begin(), seed);
+        bets.erase(bets.begin());
+
+    global.modify(global.begin(), 0, [&](auto &g) {
+      g.queue_size = g.queue_size - 1;
+    });
+        hashlist.erase(hashitem);
+    hashlist.emplace(_self, [&](auto& g){
+        g.id = hashlist.available_primary_key();
+        g.hash = hash;
     });
 }
 
-void slot_machine::rock(const queueitem&  item, const checksum256& seed) {
-    player_index playertable(_self, item.account);
-    auto player_itr = playertable.begin();
-    uint64_t result_seed = merge_seed(seed, player_itr->seed);
-    uint64_t bonus = get_bonus(result_seed, player_itr->bet_amount.amount, player_itr->bet_type);
-    uint64_t slot_pos = result_seed % 216;
+void slot_machine::rock(const betitem& item, const checksum256& reveal_seed) {
+
+        require_auth(_self);
+
+    uint64_t result_seed = merge_seed(reveal_seed, item.seed);
+    uint64_t reveal_pos;
+    uint64_t bonus;
+    uint64_t reveal_type;
+ 
+    get_bonus(result_seed, item.bet_amount.amount, item.bet_type, bonus, reveal_type, reveal_pos);
+
     if (bonus > 0) {
-        auto itr = global.find(0);
-        global.modify(itr, 0, [&](auto &g) {
-            g.add_trade(global::trade_info{item.account, asset(bonus, EOS_SYMBOL), player_itr->bet_amount, player_itr->bet_type, current_time()});
-        });
         action(
             permission_level{_self, N(active)},
-            _self, N(result),
-            make_tuple(std::string("win"), item.account, asset(bonus, EOS_SYMBOL), player_itr->bet_type, player_itr->seed))
+            LOG_CONTRACT, N(result),
+            make_tuple(std::string("win"), item.account, item.bet_amount, asset(bonus, EOS_SYMBOL), item.bet_type, reveal_type, reveal_pos, item.seed, reveal_seed, current_time()))
         .send();
 
-        // earn 
-        action(
-            permission_level{_self, N(active)},
-            TOKEN_CONTRACT, N(transfer),
-            make_tuple(_self, item.account, asset(bonus, EOS_SYMBOL), std::string("Congratulations!")))
-            .send();
+        transaction trx;
+        trx.actions.emplace_back(permission_level{_self, N(active)},
+                TOKEN_CONTRACT,
+                N(transfer),
+                make_tuple(_self, item.account, asset(bonus, EOS_SYMBOL), std::string("Congratulations!"))
+        );
+        trx.delay_sec = 1;
+        trx.send(item.account, _self, false);
 
     } else {
         action(
             permission_level{_self, N(active)},
-            _self, N(result),
-            make_tuple(std::string("lost"), item.account, asset(0, EOS_SYMBOL), player_itr->bet_type,  player_itr->seed))
+            LOG_CONTRACT, N(result),
+            make_tuple(std::string("lost"), item.account, item.bet_amount, asset(0, EOS_SYMBOL), item.bet_type, reveal_type, reveal_pos, item.seed, reveal_seed, current_time()))
         .send();
     }
-
-    playertable.modify(*player_itr, 0, [&](auto & plyer) {
-        plyer.status = 0;
-        plyer.win_amount = asset(bonus, EOS_SYMBOL);
-        plyer.slot_pos = slot_pos;
-    });
 }
 
-// just for log
-void slot_machine::result( std::string result, account_name account, asset win_amount,  uint64_t bet_type,  checksum256 player_seed ) 
-{
+
+void slot_machine::update(uint64_t status, uint64_t lkt_bonus_rate, asset safe_balance) {
     require_auth(_self);
-}
-
-void slot_machine::update(uint64_t status, uint64_t lkt_bonus_rate) {
-	require_auth(_self);
-    auto itr = global.find(0);
+    auto itr = global.begin();
     global.modify(itr, 0, [&](auto& g) {
         g.status = status;
         g.lkt_bonus_rate = lkt_bonus_rate;
+        g.safe_balance = safe_balance;
     });
 }
 
@@ -250,7 +234,6 @@ void slot_machine::flowtobancor() {
 
     // every time only flow 5%
     uint64_t flow_amount = pool_balance.amount * 5 / 100;
-
 
     action(
         permission_level{_self, N(active)},
@@ -281,4 +264,4 @@ void slot_machine::flowtobancor() {
 }
 
 // generate .wasm and .wast file
-EOSIO_ABI(slot_machine, (transfer)(init)(reveal)(result)(update)(flowtobancor))
+EOSIO_ABI(slot_machine, (transfer)(init)(addhash)(reveal)(update)(flowtobancor))
