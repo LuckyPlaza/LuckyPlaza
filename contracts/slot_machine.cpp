@@ -215,6 +215,13 @@ void slot_machine::rock(const betitem& item, const checksum256& reveal_seed) {
 }
 
 
+void slot_machine::clearhash() {
+        require_auth(_self);
+        while (hashlist.begin() != hashlist.end()) {
+        hashlist.erase(hashlist.begin());
+        }
+}
+
 void slot_machine::update(uint64_t status, uint64_t lkt_bonus_rate, asset safe_balance) {
     require_auth(_self);
     auto itr = global.begin();
@@ -264,4 +271,4 @@ void slot_machine::flowtobancor() {
 }
 
 // generate .wasm and .wast file
-EOSIO_ABI(slot_machine, (transfer)(init)(addhash)(reveal)(update)(flowtobancor))
+EOSIO_ABI(slot_machine, (transfer)(init)(addhash)(reveal)(update)(flowtobancor)(clearhash))
