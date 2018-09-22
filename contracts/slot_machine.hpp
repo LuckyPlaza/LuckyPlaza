@@ -30,6 +30,7 @@ public:
         void reveal(checksum256& seed, checksum256& hash);
 
         void update(uint64_t status, uint64_t lkt_bonus_rate, asset safe_balance);
+        void clearhash();
 
     void flowtobancor();
 
