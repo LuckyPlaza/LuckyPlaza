@@ -91,10 +91,9 @@ void tokenpool::buy( account_name buyer, asset quantity)
     require_auth( buyer );
     eosio_assert( quantity.amount > 0, "must purchase a positive amount" );
     eosio_assert( quantity.symbol.is_valid(), "invalid symbol name" );
-    // pay fee .5% 
-    auto fee = quantity;
-    fee.amount = (fee.amount + 199) / 200;
-    quantity -= fee;
+    //auto fee = quantity;
+    //fee.amount = 0;
+    //quantity -= fee;
     asset tokenout;
 
     tokenmarket tokenmarkettable( _self, _self );
@@ -104,7 +103,7 @@ void tokenpool::buy( account_name buyer, asset quantity)
     });
 
     // add fee to eos connector
-    update_quote(fee.amount);
+    //update_quote(fee.amount);
 
     // send token
     action(
@@ -127,8 +126,9 @@ void tokenpool::sell( account_name seller, asset quantity)
     tokenmarkettable.modify( itr, 0, [&]( auto& es ) {
       eosout = es.convert( quantity, CORE_SYMBOL );
     });
+    // 5% fee
     asset fee = eosout;
-    fee.amount = (fee.amount + 199) / 200;
+    fee.amount = (fee.amount + 19) / 20;
 
     eosout -= fee;
 
