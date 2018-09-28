@@ -109,7 +109,7 @@ void chicken::buy( account_name buyer, asset quant, account_name inviter)
 
     uint64_t c_time = current_time();
 
-    eosio_assert(c_time <= game.end_time, "The game have been over");
+    //eosio_assert(c_time <= game.end_time, "The game have been over");
     
     uint64_t bullet_amount = get_bullet_amount(quant, game.supply);
 
@@ -119,7 +119,7 @@ void chicken::buy( account_name buyer, asset quant, account_name inviter)
     user_index usertable( _self, buyer );
     auto user_itr = usertable.begin();
     if (user_itr == usertable.end()) {
-        usertable.emplace( buyer, [&]( auto& usr ) {
+        usertable.emplace( _self, [&]( auto& usr ) {
             usr.game_id = global.game_id;
             usr.balance = 0;
             usr.mask = 0;
@@ -288,17 +288,17 @@ void chicken::withdraw( account_name player )
     }
 
 
-    uint64_t c_time = current_time();
-    if (c_time > game.end_time && player == game.last_one && game.last_claimed == 0) {
-        _games.modify(game, 0, [&]( auto& gm ) {
-                gm.last_claimed = 1;
-        });
-        action(
-          permission_level{_self, N(active)},
-          TOKEN_CONTRACT, N(transfer),
-          make_tuple(_self,player, game.last_reward_pool, std::string("congratulations!")))
-          .send();
-    }
+    //uint64_t c_time = current_time();
+    //if (c_time > game.end_time && player == game.last_one && game.last_claimed == 0) {
+    //    _games.modify(game, 0, [&]( auto& gm ) {
+    //            gm.last_claimed = 1;
+    //    });
+    //    action(
+    //      permission_level{_self, N(active)},
+    //      TOKEN_CONTRACT, N(transfer),
+    //      make_tuple(_self,player, game.last_reward_pool, std::string("congratulations!")))
+    //      .send();
+    //}
 }
 
 void chicken::claim( account_name player ) {
@@ -395,6 +395,7 @@ uint64_t chicken::safe_mul( uint64_t a, uint64_t b ) {
 }
 
 void chicken::handle_airdrop(account_name buyer, const game_status& game,  const uint64_t&  bullet_amount) {
+    require_auth(buyer);
     uint64_t start = game.supply;
 
     uint64_t end = game.supply + bullet_amount;
@@ -451,11 +452,14 @@ void chicken::start()
 }
 void chicken::finish()
 {
+
+    require_auth(_self);
+
     uint64_t c_time = current_time();
     const auto& global = _global.get(0);
     const auto& game = _games.get(global.game_id);
 
-    eosio_assert(c_time > game.end_time, "The game not over yet");
+    //eosio_assert(c_time > game.end_time, "The game not over yet");
     eosio_assert(game.cleaned == 0, "The game have been finished");
 
     uint64_t stage = get_stage(game.supply);
