@@ -112,7 +112,7 @@ void roulette::ontransfer(account_name from, account_name to, extended_asset qua
     if (quantity.contract == EOS_CONTRACT) {
         asset eos_balance = token(EOS_CONTRACT).get_balance(_self, EOS_SYMBOL);
         eosio_assert( global.begin()->eos_safe_balance.amount < eos_balance.amount, "under safe, can not play" );
-        eosio_assert(quantity.amount >= 10000, "Bet must large than 1 EOS");
+        eosio_assert(quantity.amount >= 2500, "Bet must large than 0.25 EOS");
         eosio_assert(quantity.amount * 97 * 40 * 30 / ( 100 * bet_strs.size() ) < eos_balance.amount, "can not too large");
     } else if (quantity.contract == LKT_CONTRACT) {
         eosio_assert(false, "LKT not start yet");
