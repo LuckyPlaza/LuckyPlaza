@@ -115,10 +115,9 @@ void roulette::ontransfer(account_name from, account_name to, extended_asset qua
         eosio_assert(quantity.amount >= 2500, "Bet must large than 0.25 EOS");
         eosio_assert(quantity.amount * 97 * 40 * 30 / ( 100 * bet_strs.size() ) < eos_balance.amount, "can not too large");
     } else if (quantity.contract == LKT_CONTRACT) {
-        eosio_assert(false, "LKT not start yet");
         asset lkt_balance = token(LKT_CONTRACT).get_balance(_self, LKT_SYMBOL);
         eosio_assert( global.begin()->lkt_safe_balance.amount < lkt_balance.amount, "under safe, can not play" );
-        eosio_assert(quantity.amount >= 10000, "Bet must large than 1 LKT");
+        eosio_assert(quantity.amount >= 100000, "Bet must large than 10 LKT");
         eosio_assert(quantity.amount * 97 * 40 * 30 / ( 100 * bet_strs.size() ) < lkt_balance.amount, "can not too large");
     } else {
         eosio_assert( false, "Invalid code" );
@@ -214,6 +213,7 @@ void roulette::reveal(account_name player, checksum256& seed, checksum256& hash)
 
     assert_sha256( (char *)&seed, sizeof(seed), (const checksum256 *)& bet_itr->house_hash );
 
+
     rock(*bet_itr, seed);
 
     bets.erase(bet_itr);
@@ -274,6 +274,7 @@ void roulette::flowbancor(uint64_t flow_amount) {
     .send();
 }
 
+
 void roulette::rock(betitem item, const checksum256& reveal_seed) {
 
     require_auth(_self);
@@ -283,14 +284,16 @@ void roulette::rock(betitem item, const checksum256& reveal_seed) {
  
     extended_asset bonus = item.get_bonus(reveal_pos);
 
-    // reward 0.5% to banker
-    rewardbanker(reveal_pos, item.bet_amount.amount / 200);
+        if (item.bet_amount.contract == EOS_CONTRACT) {
+        // reward 0.5% to banker
+        rewardbanker(reveal_pos, item.bet_amount.amount / 200);
 
-    // reward 0.5% to dev
-    rewarddev(item.bet_amount.amount / 200);
+        // reward 0.5% to dev
+        rewarddev(item.bet_amount.amount / 200);
 
-    // flow 0.5% to LKT POOL
-    flowbancor(item.bet_amount.amount / 200);
+        // flow 0.5% to LKT POOL
+        flowbancor(item.bet_amount.amount / 200);
+    }
 
     // win
     if (bonus.amount > 0) {
