@@ -32,6 +32,8 @@ class tokenpool: public eosio::contract {
 
     void addwhitelist(account_name white_account);
 
+    void delwhitelist(account_name white_account);
+
     void start();
 
     // @abi table twhitelist i64
@@ -55,7 +57,7 @@ class tokenpool: public eosio::contract {
 
   private:
     void update_quote(uint64_t delta);
-    void sell( account_name seller, asset quantity);
+    void sell( account_name seller, asset quantity, string memo);
     void buy( account_name buyer, asset quantity);
 
   public:
