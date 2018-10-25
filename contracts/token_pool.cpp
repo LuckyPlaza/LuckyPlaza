@@ -1,4 +1,3 @@
-
 #include <eosiolib/asset.hpp>
 #include <eosiolib/eosio.hpp>
 #include <eosiolib/currency.hpp>
@@ -77,7 +76,7 @@ void tokenpool::transfer( account_name from,
 
     // sell LKT
     if (quantity.symbol == LKT_SYMBOL) {
-        sell(from, quantity);
+        sell(from, quantity, memo);
     // buy LKT
     } else if (quantity.symbol == EOS_SYMBOL) {
         buy(from, quantity);
@@ -114,7 +113,7 @@ void tokenpool::buy( account_name buyer, asset quantity)
 
 }
 
-void tokenpool::sell( account_name seller, asset quantity)
+void tokenpool::sell( account_name seller, asset quantity, string memo)
 {
     require_auth( seller );
     eosio_assert( quantity.amount > 0, "must purchase a positive amount" );
@@ -126,9 +125,12 @@ void tokenpool::sell( account_name seller, asset quantity)
     tokenmarkettable.modify( itr, 0, [&]( auto& es ) {
       eosout = es.convert( quantity, CORE_SYMBOL );
     });
-    // 5% fee
-    asset fee = eosout;
-    fee.amount = (fee.amount + 19) / 20;
+    // 15% fee
+    asset tmp = eosout;
+    asset fee = tmp;
+    fee.amount = (tmp.amount * 3 + 19) / 20;
+
+    eosio::print(tmp.amount, '\n');
 
     eosout -= fee;
 
@@ -139,6 +141,22 @@ void tokenpool::sell( account_name seller, asset quantity)
       make_tuple(_self,seller,eosout,std::string("sell lucky token")))
       .send();
 
+    // have inviter
+    if (memo.size() == 12) {
+        account_name inviter = eosio::string_to_name(memo.c_str());
+        if (inviter != seller) {
+            asset inviter_fee = tmp;
+            inviter_fee.amount = tmp.amount / 20;
+            fee.amount = fee.amount - inviter_fee.amount;
+            if (inviter_fee.amount > 0) {
+                action(
+                  permission_level{_self, N(active)},
+                  EOS_TOKEN_CONTRACT, N(transfer),
+                  make_tuple(_self,inviter,inviter_fee,std::string("inviter reward")))
+                  .send();
+            }
+        }
+    }
     // add fee to bancor
     update_quote(fee.amount);
 }
@@ -182,6 +200,14 @@ void tokenpool::addwhitelist(account_name white_account)
     }); 
 }
 
+void tokenpool::delwhitelist(account_name white_account)
+{
+    require_auth( white_account );
+
+    whitelist_index whitelisttable( _self, white_account );
+
+    whitelisttable.erase(whitelisttable.begin());
+}
 void tokenpool::start()
 {
 
@@ -210,7 +236,7 @@ void tokenpool::start()
     {                                                                                                                                             \
       eosio_assert(code == N(eosio), "onerror action's are only valid from the \"eosio\" system account");                                        \
     }                                                                                                                                             \
-    if ( (code == EOS_TOKEN_CONTRACT && action == N(transfer)) || (code == LUCKY_TOKEN_CONTRACT && action == N(transfer)) || (code == self && (action == N(addwhitelist) || action == N(flowtoquote) || action == N(create) || action == N(start) ))) \
+    if ( (code == EOS_TOKEN_CONTRACT && action == N(transfer)) || (code == LUCKY_TOKEN_CONTRACT && action == N(transfer)) || (code == self && (action == N(addwhitelist) || action == N(delwhitelist) || action == N(flowtoquote) || action == N(create) || action == N(start) ))) \
     {                                                                                                                                             \
       TYPE thiscontract(self);                                                                                                                    \
       switch (action)                                                                                                                             \
@@ -222,7 +248,7 @@ void tokenpool::start()
   }
 
 // generate .wasm and .wast file
-EOSIO_ABI_PRO(tokenpool, (transfer)(create)(flowtoquote)(addwhitelist)(start))
+EOSIO_ABI_PRO(tokenpool, (transfer)(create)(flowtoquote)(addwhitelist)(delwhitelist)(start))
 
 // generate .abi file
-//EOSIO_ABI(tokenpool, (transfer)(create)(flowtoquote)(addwhitelist)(start))
+//EOSIO_ABI(tokenpool, (transfer)(create)(flowtoquote)(addwhitelist)(delwhitelist)(start))
