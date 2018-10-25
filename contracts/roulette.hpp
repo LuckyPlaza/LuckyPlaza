@@ -107,6 +107,25 @@ private:
     typedef eosio::multi_index<N(banker), banker> banker_index;
     banker_index bankers;
 
+    struct exchange_state {
+      asset    supply;
+
+      struct connector {
+         asset balance;
+         double weight;
+
+         EOSLIB_SERIALIZE( connector, (balance)(weight) )
+      };
+
+      connector base;
+      connector quote;
+
+      uint64_t primary_key()const { return supply.symbol; }
+
+      EOSLIB_SERIALIZE( exchange_state, (supply)(base)(quote) )
+    };
+    typedef eosio::multi_index<N(tokenmarket), exchange_state> tokenmarket;
+
     struct token
     {
         token(account_name tkn) : _self(tkn) {}
@@ -138,6 +157,8 @@ private:
 
     void rock(betitem item, const checksum256& reveal_seed);
 
+    asset getlkt(uint64_t amount);
+
     void bebanker(account_name, extended_asset quantity, uint64_t pos);
 
     void rewardbanker(uint64_t reveal_pos, uint64_t reward_amount);
@@ -146,9 +167,14 @@ private:
 
     void flowbancor(uint64_t flow_amount);
 
+    void flowdivpool(uint64_t amount);
+
+    void buybacklkt(uint64_t amount, account_name player);
+
     uint8_t char2int(char input);
 
     void string2seed(const string& str, checksum256& seed);
+
 
     void split(std::string str, std::string splitBy, std::vector<std::string>& tokens)
     {
