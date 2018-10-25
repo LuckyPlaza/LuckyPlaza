@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <eosiolib/transaction.hpp>
+#include <cmath>
 
 #include "roulette.hpp"
 
@@ -12,6 +13,8 @@
 #define BANCOR_CONTRACT N(bkyyshayysha)
 #define LOG_CONTRACT N(roulettelog1)
 #define DIVIDEND_ACCOUNT N(roulettedivi)
+#define LKT_POOL_DIVIDEND_ACCOUNT N(lktdividend1)
+
 #define OFFICE_ACCOUNT N(rouletteoffi)
 
 #define POS_NUM 40
@@ -75,6 +78,10 @@ void roulette::ontransfer(account_name from, account_name to, extended_asset qua
     }
 
     if (memo == "flow into roulette") {
+        return;
+    }
+
+    if (memo == "send lucky token to buyer") {
         return;
     }
 
@@ -265,15 +272,59 @@ void roulette::rewarddev(uint64_t reward_amount) {
     .send();
 }
 
-void roulette::flowbancor(uint64_t flow_amount) {
+asset roulette::getlkt(uint64_t amount) {
+    tokenmarket tokenmarkettable(BANCOR_CONTRACT, BANCOR_CONTRACT);
+    const auto& market = tokenmarkettable.get( S(0,SMT), "SMT market does not exist");
+    double lkt_amount = market.base.balance.amount;
+    double eos_amount = market.quote.balance.amount;
+    double x = amount;
+
+    eosio::print(lkt_amount, eos_amount, '\n');
+
+    double T = lkt_amount * ( std::pow( 1 + x / ( eos_amount + x), (double)1.0 ) - 1);
+    int64_t out = int64_t(T);
+    return asset(out, LKT_SYMBOL);
+}
+
+void roulette::buybacklkt(uint64_t amount, account_name player) {
+    require_auth(_self);
+    asset buylkt = getlkt(amount);
+
+    
+    eosio::print(buylkt.amount, '\n');
+    action(
+        permission_level{_self, N(active)},
+        EOS_CONTRACT, 
+        N(transfer),
+        make_tuple(_self, BANCOR_CONTRACT, asset(amount, EOS_SYMBOL), std::string("buy lkt")))
+    .send();
+
+    //action(
+    //    permission_level{_self, N(active)},
+    //    LKT_CONTRACT, 
+    //    N(transfer),
+    //    make_tuple(_self, player, buylkt, std::string("mine lkt")))
+    //.send();
+
+    transaction trx;
+    trx.actions.emplace_back(permission_level{_self, N(active)},
+            LKT_CONTRACT,
+            N(transfer),
+            make_tuple(_self, player, buylkt, std::string("mine lkt"))
+    );
+    trx.delay_sec = 1;
+    trx.send(player+1, _self, false);
+}
+
+void roulette::flowdivpool(uint64_t amount) {
     require_auth(_self);
     action(
         permission_level{_self, N(active)},
-        BANCOR_CONTRACT, N(flowtoquote),
-        make_tuple( _self, asset(flow_amount, EOS_SYMBOL), std::string("roulette dividend") ))
+        EOS_CONTRACT, 
+        N(transfer),
+        make_tuple(_self, LKT_POOL_DIVIDEND_ACCOUNT, asset(amount, EOS_SYMBOL), std::string("flow to lkt dividend pool")))
     .send();
 }
-
 
 void roulette::rock(betitem item, const checksum256& reveal_seed) {
 
@@ -285,14 +336,26 @@ void roulette::rock(betitem item, const checksum256& reveal_seed) {
     extended_asset bonus = item.get_bonus(reveal_pos);
 
         if (item.bet_amount.contract == EOS_CONTRACT) {
+
         // reward 0.5% to banker
         rewardbanker(reveal_pos, item.bet_amount.amount / 200);
 
-        // reward 0.5% to dev
-        rewarddev(item.bet_amount.amount / 200);
+        // reward 0.25% to dev
+        rewarddev(item.bet_amount.amount / 400);
 
-        // flow 0.5% to LKT POOL
-        flowbancor(item.bet_amount.amount / 200);
+        // send 1.2% lkt to player
+        buybacklkt(item.bet_amount.amount * 3/ 250, item.account);
+
+        // flow 0.8% to div pool
+        flowdivpool(item.bet_amount.amount * 8 / 1000);
+    } else {
+        // flow 1.0% to div pool for lkt
+        action(
+            permission_level{_self, N(active)},
+            LKT_CONTRACT, 
+            N(transfer),
+            make_tuple(_self, LKT_POOL_DIVIDEND_ACCOUNT, asset(item.bet_amount.amount / 100, LKT_SYMBOL), std::string("flow to lkt dividend pool")))
+        .send();
     }
 
     // win
